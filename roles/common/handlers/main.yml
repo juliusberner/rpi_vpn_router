@@ -1,0 +1,19 @@
+---
+- name: restart openvpn
+  service:
+    name: openvpn
+    state: restarted
+
+- name: restart firewall
+  service:
+    name: firewall
+    state: restarted
+
+- name: restart rpcd
+  service:
+    name: rpcd
+    state: restarted
+
+- name: reboot
+  nohup:
+    command: "reboot"

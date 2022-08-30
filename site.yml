@@ -1,0 +1,8 @@
+
+---
+- name: Setup OpenWrt
+  hosts: openwrt
+  roles:
+  - role: gekmihesg.openwrt
+    openwrt_install_recommended_packages: "no"
+  - role: common

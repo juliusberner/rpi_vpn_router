@@ -1,0 +1,82 @@
+---
+###########
+# General #
+###########
+sysupgrade: no
+pub_key_path: "~/.ssh/id_rsa.pub"
+usb_wifi: yes
+
+############
+# Packages #
+############
+packages:
+  # WPA Enterprise
+  - "wpad"
+  - "wpa-cli"
+  - "hostapd-utils"
+  # USB WiFI
+  - "kmod-usb-core"
+  - "kmod-usb-uhci"
+  - "kmod-usb-ohci"
+  - "kmod-usb2"
+  - "usbutils"
+  # VPN
+  - "openvpn-openssl"
+  - "luci-app-openvpn"
+  # editor
+  - "nano"
+
+# driver for the USB WiFI adapter
+usb_wifi_drivers:
+  # example: Realtek
+  - kmod-rtl8192cu
+  - kmod-mac80211
+  - kmod-rtlwifi
+  # # example: Ralink/MediaTek
+  # - kmod-rt2800-lib
+  # - kmod-rt2800-usb
+  # - kmod-rt2x00-lib
+  # - kmod-rt2x00-usb
+
+#########################
+# STA(tion or 'client') #
+#########################
+# station interface (needs to be personal with internet access)
+sta_interface: "{{ vault_sta_interface }}"
+
+# optional: additional station interfaces
+extra_sta_interfaces: "{{ vault_extra_sta_interfaces | default([]) }}"
+
+sta_device:
+  # hwmode: "11g" # 11g: 2.4GHz, 11a: 5GHz
+  band: "2g" # 2g: 2.4 GHz, 5g: 5 GHz, 6g: 6 GHz, 60g: 60 GHz
+  channel: "auto"
+  cell_density: "0"
+  htmode: "HT20" # VHT: 802.11ac, HT: 802.11n, HE: 802.11ax, NOHT: disable 11n & 11ac
+  short_gi_40: "0" # short guard interval
+  country: "{{ vault_country }}"
+
+#################################
+# A(ccess) P(oint or 'hotspot') #
+#################################
+ap_interface:
+  ssid: "rpi_vpn"
+  encryption: "psk2"
+  key: "{{ vault_ap_interface_key }}"
+
+ap_device:
+  # hwmode: "11g" # 11g: 2.4GHz, 11a: 5GHz
+  band: "2g" # 2g: 2.4 GHz, 5g: 5 GHz, 6g: 6 GHz, 60g: 60 GHz
+  channel: "auto"
+  cell_density: "0"
+  htmode: "NOHT" # VHT: 802.11ac, HT: 802.11n, HE: 802.11ax, NOHT: disable 11n & 11ac
+  short_gi_40: "1" # short guard interval
+  country: "{{ vault_country }}"
+
+#######
+# VPN #
+#######
+openvpn: "{{ vault_openvpn }}"
+
+# optional: define the initial OpenVPN config from `roles/common/files`
+# default_openvpn_config: "default_config.ovpn"

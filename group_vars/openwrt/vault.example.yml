@@ -1,0 +1,35 @@
+---
+# # to be saved as `vault.yml` and to be encrypted using
+# # ansible-vault encrypt group_vars/openwrt/vault.yml
+#
+# # country code
+# vault_country: "US"
+#
+# # optional: New RPI IP address
+# # new_lan_ip: "10.71.71.1"
+#
+# # initial WiFi to connect (needs to be personal with internet access)
+# vault_sta_interface:
+#   # example: WPA Personal - WPA2 (PSK)
+#   ssid: "network_name"
+#   key: "network_password"
+#   encryption: "psk2"
+#
+# # optional: additional WiFi configurations to add
+# # extra_sta_interfaces:
+# #   # example: WPA Enterprise - WPA2 Enterprise
+# #   - network: "wwan"
+# #     ssid: "network_name"
+# #     eap_type: "peap"
+# #     identity: "username"
+# #     password: "password"
+# #     encryption: "wpa2"
+# #     auth: "EAP-MSCHAPV2"
+#
+# # RPI WiFi password
+# vault_ap_interface_key: "rpi_wifi_password"
+#
+# # OpenVPN credentials
+# vault_openvpn:
+#   user: "openvpn_user"
+#   password: "openvpn_password"

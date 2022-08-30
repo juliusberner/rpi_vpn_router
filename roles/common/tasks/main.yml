@@ -1,0 +1,428 @@
+---
+###########
+# Prepare #
+###########
+- name: Sysupgrade
+  block:
+  - name: Find openwrt image
+    find:
+      paths: "roles/common/files"
+      patterns: "*.img.gz"
+      file_type: file
+      recurse: yes
+    delegate_to: localhost
+    register: find_img_result
+
+  - name: Copy openwrt image
+    command: "{{ openwrt_scp }} {{ find_img_result.files[0].path }} {{ openwrt_user_host | quote }}:/tmp/sysupgrade.bin"
+    delegate_to: localhost
+
+  - name: Start sysupgrade
+    nohup:
+      command: sysupgrade -q /tmp/sysupgrade.bin
+
+  - name: Wait for reboot
+    wait_for_connection:
+      timeout: 300
+      delay: 60
+  when: sysupgrade
+
+- name: Revert pending changes
+  uci:
+    command: revert
+
+#######
+# SSH #
+#######
+- name: Add authorized key
+  lineinfile:
+    create: yes
+    path: "/etc/dropbear/authorized_keys"
+    line: "{{ lookup('file', pub_key_path) }}"
+
+- name: Disable password authentification
+  uci:
+    command: set
+    key: "dropbear.@dropbear[0]"
+    value:
+      PasswordAuth: "0"
+      RootPasswordAuth: "0"
+
+############
+# Internet #
+############
+- name: Check Internet
+  command: "ping -c1 google.com"
+  register: internet
+  changed_when: no
+  failed_when: no
+
+- name: Connect to internet
+  block:
+  - name: Configure radio0 device
+    uci:
+      command: section
+      config: "wireless"
+      type: "wifi-device"
+      name: "radio0"
+      value: "{{ sta_device | combine({'disabled': '0'}) }}"
+
+  - name: Remove old radio0 interface
+    uci:
+      command: absent
+      config: "wireless"
+      type: "wifi-iface"
+      find_by:
+        device: "radio0"
+
+  - name: Configure radio0 interface
+    uci:
+      command: section
+      config: "wireless"
+      type: "wifi-iface"
+      name: "sta0"
+      find_by:
+        device: "radio0"
+      set_find: yes
+      replace: yes
+      value: "{{  sta_interface | combine({'mode': 'sta', 'network': 'wwan'}) }}"
+
+  - name: Set wwan dhcp
+    uci:
+      command: section
+      config: "network"
+      type: "interface"
+      name: "wwan"
+      replace: yes
+      value:
+        proto: "dhcp"
+        peerdns: "0"
+        dns: "1.1.1.1 8.8.8.8"
+
+  - name: Commit changes
+    uci:
+      command: commit
+    notify:
+    - setup wifi
+    - restart network
+  when: internet.rc != 0
+
+- name: Flush handlers
+  meta: flush_handlers
+
+- name: Check Internet
+  command: "ping -c1 google.com"
+  register: internet
+  until: internet.rc == 0
+  changed_when: no
+
+############
+# Packages #
+############
+- name: Update opkg cache
+  opkg:
+    name: opkg
+    update_cache: yes
+  register: opkg_update
+  failed_when: opkg_update.failed
+  changed_when: no
+
+- name: Uninstall Packages
+  opkg:
+    name: "wpad-basic-wolfssl" # replace by wpad to enable WPA2 Enterprise
+    state: absent
+
+- name: Install recommended packages
+  include_role:
+    name: gekmihesg.openwrt
+    tasks_from: packages
+
+- name: Install further packages
+  opkg:
+    name: "{{ item }}"
+    state: present
+  loop: "{{ packages }}"
+  notify:
+  - restart rpcd
+
+- name: Install further drivers
+  opkg:
+    name: "{{ item }}"
+    state: present
+  loop: "{{ usb_wifi_drivers }}"
+  when: usb_wifi
+  notify:
+  - restart rpcd
+
+- name: Flush handlers
+  meta: flush_handlers
+
+#####################
+# Wireless Networks #
+#####################
+- name: Define station device
+  set_fact:
+    sta_device_name: "{{ 'radio1' if usb_wifi else 'radio0' }}"
+
+- name: Setup radio1
+  block:
+  - name: Get wireless config
+    uci:
+      command: show
+      config: "wireless"
+      type: "wifi-device"
+      option: "path"
+      name: "radio1"
+    register: wireless_config
+
+  - name: Add usb wifi
+    command: "ifconfig wlan1 up"
+    when: not 'wireless.radio1=wifi-device' in wireless_config.result
+
+  - name: Configure access-point device
+    uci:
+      command: section
+      config: "wireless"
+      type: "wifi-device"
+      name: "radio0"
+      value: "{{ ap_device | combine({'disabled': '0'}) }}"
+
+  - name: Configure access-point interface
+    uci:
+      command: section
+      config: "wireless"
+      type: "wifi-iface"
+      name: "ap0"
+      find_by:
+        device: "radio0"
+      set_find: yes
+      replace: yes
+      value: "{{ ap_interface | combine({'mode': 'ap', 'network': 'lan'}) }}"
+  when: usb_wifi
+
+- name: Remove old access-point interfaces
+  uci:
+    command: absent
+    config: "wireless"
+    type: "wifi-iface"
+    find_by:
+      device: "radio0"
+      mode: "ap"
+  when: not usb_wifi
+
+- name: Configure station device
+  uci:
+    command: section
+    config: "wireless"
+    type: "wifi-device"
+    name: "{{ sta_device_name }}"
+    value: "{{ sta_device | combine({'disabled': '0'}) }}"
+
+- name: Configure station interface
+  uci:
+    command: section
+    config: "wireless"
+    type: "wifi-iface"
+    name: "sta0"
+    find_by:
+      device: "{{ sta_device_name }}"
+    set_find: yes
+    replace: yes
+    value: "{{ sta_interface | combine({'mode': 'sta', 'network': 'wwan'}) }}"
+
+- name: Configure additional station interfaces
+  uci:
+    command: section
+    config: "wireless"
+    type: "wifi-iface"
+    name: "sta{{ idx + 1 }}"
+    replace: yes
+    value: "{{ item | combine({'device': sta_device_name, 'mode': 'sta', 'disabled': '1', 'network': 'wwan'}) }}"
+  loop: "{{ extra_sta_interfaces }}"
+  loop_control:
+    label: "{{ item.ssid }}"
+    index_var: idx
+
+- name: Commit changes
+  uci:
+    command: commit
+  notify:
+  - setup wifi
+
+#######
+# VPN #
+#######
+- name: Create auth file
+  copy:
+    dest: "/etc/openvpn/proton.auth"
+    content: |
+      {{ openvpn.user }}
+      {{ openvpn.password }}
+  register: auth
+
+- name: Find OpenVPN config files
+  find:
+    paths: roles/common/files
+    patterns: "*.ovpn"
+    file_type: file
+    recurse: yes
+  delegate_to: localhost
+  register: find_config_result
+
+- name: Define OpenVPN configs
+  set_fact:
+    openvpn_configs: "{{ find_config_result.files | map(attribute='path') | map('basename') }}"
+
+- name: Link to auth file
+  lineinfile:
+    path: "roles/common/files/{{ item }}"
+    regexp: "^auth-user-pass"
+    line: "auth-user-pass {{ auth.dest }}"
+  loop: "{{ openvpn_configs }}"
+  delegate_to: localhost
+
+- name: Copy OpenVPN config files
+  copy:
+    src: "roles/common/files/{{ item }}"
+    dest: "/etc/openvpn/{{ item }}"
+  loop: "{{ openvpn_configs }}"
+
+- name: Define default OpenVPN config
+  set_fact:
+    openvpn_config: "{{ default_openvpn_config | default(openvpn_configs[0]) }}"
+
+- name: Configure OpenVPN
+  uci:
+    command: section
+    config: "openvpn"
+    type: "openvpn"
+    name: "{{ item.split('.') | first | regex_replace('-', '_') }}"
+    replace: yes
+    value:
+      enabled: "{{ '1' if openvpn_config == item else '0' }}"
+      config: "/etc/openvpn/{{ item }}"
+  loop: "{{ openvpn_configs }}"
+  loop_control:
+    index_var: idx
+
+# Dynamic connection: https://openwrt.org/docs/guide-user/services/vpn/openvpn/extras#dynamic_connection
+- name: Create folder
+  file:
+    path: "{{ item }}"
+    state: "directory"
+  register: hotplug_dir
+  loop:
+  - "/etc/hotplug.d/online"
+  - "/etc/hotplug.d/iface"
+
+- name: Create hotplug online file
+  copy:
+    src: "roles/common/files/hotplug-online"
+    dest: "/etc/hotplug.d/iface/90-online"
+  register: hotplug_online_file
+
+- name: Create hotplug openvpn file
+  copy:
+    dest: "/etc/hotplug.d/online/10-openvpn"
+    content: |
+      /etc/init.d/openvpn restart
+  register: hotplug_openvpn_file
+
+- name: Create hotplug sleep file
+  copy:
+    dest: "/etc/hotplug.d/online/00-sleep"
+    content: |
+      sleep 5
+  register: hotplug_sleep_file
+
+- name: Edit sysupgrade.conf
+  lineinfile:
+    path: "/etc/sysupgrade.conf"
+    line: "{{ item }}"
+  loop:
+  - "{{ hotplug_openvpn_file.dest }}"
+  - "{{ hotplug_sleep_file.dest }}"
+  - "{{ hotplug_online_file.dest }}"
+
+- name: Commit changes
+  uci:
+    command: commit
+  notify:
+  - restart openvpn
+
+- name: Add vpnclient interface
+  uci:
+    command: section
+    config: "network"
+    type: "interface"
+    name: "vpnclient"
+    replace: yes
+    value:
+      device: "tun0"
+      proto: "none"
+
+- name: Commit changes
+  uci:
+    command: commit
+  notify:
+  - restart network
+
+# Kill switch: https://openwrt.org/docs/guide-user/services/vpn/openvpn/extras#kill_switch
+- name: Add firewall zone
+  uci:
+    command: section
+    config: "firewall"
+    type: "zone"
+    find_by:
+      name: "vpn"
+    set_find: yes
+    replace: yes
+    value:
+      input: "REJECT"
+      output: "ACCEPT"
+      forward: "REJECT"
+      masq: "1"
+      mtu_fix: "1"
+      device: "tun+"
+
+- name: Change forwarding
+  uci:
+    command: section
+    config: "firewall"
+    type: "forwarding"
+    find_by:
+      src: "lan"
+    set_find: yes
+    replace: yes
+    value:
+      dest: "vpn"
+
+- name: Commit changes
+  uci:
+    command: commit
+  notify:
+  - restart firewall
+
+- name: Flush handlers
+  meta: flush_handlers
+
+##################
+# Local networks #
+##################
+- name: Change IP address
+  block:
+  - name: Configure lan interface
+    uci:
+      command: section
+      config: "network"
+      type: "interface"
+      name: "lan"
+      value:
+        ipaddr: "{{ new_lan_ip }}"
+
+  - name: Commit changes
+    uci:
+      command: commit
+    notify:
+    - reboot
+  when: new_lan_ip is defined
