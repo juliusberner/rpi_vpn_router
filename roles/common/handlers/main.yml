@@ -14,6 +14,11 @@
     name: rpcd
     state: restarted
 
+- name: restart cron
+  service:
+    name: cron
+    state: restarted
+
 - name: reboot
   nohup:
     command: "reboot"

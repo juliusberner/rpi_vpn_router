@@ -1,8 +1,11 @@
 # Vault
 group_vars/openwrt/vault.yml
+
+# Files
 roles/common/files/*
 !roles/common/files/README.md
 !roles/common/files/hotplug-online
+!roles/common/files/log_location.sh
 
 # Byte-compiled / optimized / DLL files
 __pycache__/

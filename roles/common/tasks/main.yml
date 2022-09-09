@@ -403,6 +403,33 @@
   notify:
   - restart firewall
 
+# Logging
+- name: Create folder
+  file:
+    path: "/etc/config/files"
+    state: "directory"
+  register: files_dir
+
+- name: Copy logging script
+  copy:
+    src: "roles/common/files/log_location.sh"
+    dest: "{{ files_dir.path }}/log_location.sh"
+  register: logging_file
+
+- name: Create cron file
+  copy:
+    dest: "{{ files_dir.path }}/cron"
+    content: |
+      */5 * * * * /bin/ash {{ logging_file.dest }}
+
+  register: crontab_file
+
+- name: Change crontab
+  command: "crontab {{ crontab_file.dest }}"
+  when: crontab_file.changed
+  notify:
+  - restart cron
+
 - name: Flush handlers
   meta: flush_handlers
 
