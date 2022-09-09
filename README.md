@@ -1,6 +1,6 @@
 # Raspberry Pi VPN Router
 
-> Ansible script to setup a VPN router using [OpenWrt](https://openwrt.org/) 21.02.3 and [ProtonVPN](https://protonvpn.com/) on a Raspberry Pi (RPI) 4B with a Realtek RTL8192CU USB WiFi adapter. Based on [NetworkChuck](https://youtu.be/jlHWnKVpygw), [OpenWrt](https://openwrt.org/docs/guide-user/services/vpn/openvpn/client), and [ProtonVPN](https://protonvpn.com/support/how-to-set-up-protonvpn-on-openwrt-routers/)
+> Ansible playbook to setup a VPN router using [OpenWrt](https://openwrt.org/) 21.02.3 and [ProtonVPN](https://protonvpn.com/) on a Raspberry Pi (RPI) 4B with a Realtek RTL8192CU USB WiFi adapter. Based on [NetworkChuck](https://youtu.be/jlHWnKVpygw), [OpenWrt](https://openwrt.org/docs/guide-user/services/vpn/openvpn/client), and [ProtonVPN](https://protonvpn.com/support/how-to-set-up-protonvpn-on-openwrt-routers/)
 tutorials.
 
 ![Project image](project.png)
